@@ -3,7 +3,7 @@
     <head>
         <meta charset="utf-8">
         <meta http-equiv="X-UA-Compatible" content="IE=edge">
-        <title></title>
+        <title>ちょくメモ</title>
         <meta name="description" content="">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <link rel="stylesheet" href="http://maxcdn.bootstrapcdn.com/bootstrap/3.2.0/css/bootstrap.min.css">
@@ -48,14 +48,27 @@
                     .controller("MyController", ["$window", "$scope", "$modal", "$http", function ($window, $scope, $modal, $http) {
                             $scope.user = "ゲストさん";
                             $scope.userlist = ['cuhey3'];
-                            $scope.getUser = function () {
-                                $modal.open({
-                                    templateUrl: 'userModal',
-                                    scope: $scope,
-                                    controller: userModalCtrl,
-                                    windowClass: 'app-modal-window',
-                                    backdrop: 'static'
-                                });
+                            $scope.getUser = function (flag) {
+                                if (flag) {
+                                    $modal.open({
+                                        templateUrl: 'userModal',
+                                        scope: $scope,
+                                        controller: userModalCtrl,
+                                        windowClass: 'app-modal-window',
+                                    });
+                                } else {
+                                    if (window.localStorage.getItem("user")) {
+                                        $scope.user = window.localStorage.getItem("user");
+                                    } else {
+                                        $modal.open({
+                                            templateUrl: 'userModal',
+                                            scope: $scope,
+                                            controller: userModalCtrl,
+                                            windowClass: 'app-modal-window',
+                                            backdrop: 'static'
+                                        });
+                                    }
+                                }
                             };
                             $scope.tasks = {};
                             $http({url: 'http://192.168.1.52:5576/init', method: "GET"})
@@ -63,7 +76,7 @@
                                         for (var key in data) {
                                             $scope.tasks[key] = data[key];
                                         }
-                                        $scope.getUser();
+                                        $scope.getUser(false);
                                     });
                             $scope.open = function (r) {
                                 $scope.modal_id = r.task_id;
@@ -210,7 +223,7 @@
                                     }
                                     if (status) {
                                         for (var i = 0; i < status.length; i++) {
-                                            if(status[i]["author"] === user){
+                                            if (status[i]["author"] === user) {
                                                 hasUser = true;
                                             }
                                         }
@@ -314,6 +327,7 @@
                         }
                         window.localStorage.setItem("kidoku", JSON.stringify($scope.kidoku));
                     }
+                    window.localStorage.setItem("user", user);
                     $modalInstance.close();
                 };
             };</script>
@@ -322,10 +336,15 @@
         <div class="container">
             <h2>ちょくメモ（ver.α）</h2>
             <h3>{{user}}</h3>
-            <input type="button" value="タスクを作成" ng-click="create()" />
-            <input type="button" value="全て既読" ng-click="allKidoku()" />
+            <div>
+                <input type="button" value="タスクを作成" ng-click="create()" />
+                <input type="button" value="全て既読" ng-click="allKidoku()" />
             　<input type="checkbox" ng-true-value="true" ng-false-value="false" ng-model="completionFlag" /> 完了タスクを表示
              　<input type="checkbox" ng-true-value="true" ng-false-value="false" ng-model="relationFlag" /> みんなのタスクを表示
+                <div style="float:right">
+                    <input type="button" value="ユーザーの切り替え" ng-click="getUser(true);"/>
+                </div>
+            </div>
             <table id="searchObjResults" class="table table-hover">
                 <thead>
                     <tr><th>更新日時</th><th>タスク名</th><th>更新者</th><th>ステータス</th><th>コメント</th><th style="display: none;" class="comment"></th></tr>
@@ -386,22 +405,22 @@
             </body>
         </script>
         <script  type="text/ng-template" id="userModal">
-            <style>
-            #selected{background-color:yellow;}
-            </style>
-            <body>
-            <div class="modal-header">
-            <h3 class="modal-title">ユーザーを選択してください</h3>
-            </div>
-            <div class="modal-body">
-            <ul ng-repeat="u in userlist track by $index">
-            <li><span onclick="$('#selected').attr('id','');$(this).attr('id','selected');$('#user-ok').removeAttr('disabled')">{{u}}</span></li>
-            </ul>
-            </div>
-            <div class="modal-footer">
-            <button class="btn btn-primary" ng-click="ok()" id="user-ok" disabled="disabled">OK</button>
-            </div>  
-            </body>
+        <style>
+        #selected{background-color:yellow;}
+        </style>
+        <body>
+        <div class="modal-header">
+        <h3 class="modal-title">ユーザーを選択してください</h3>
+        </div>
+        <div class="modal-body">
+        <ul ng-repeat="u in userlist track by $index">
+        <li><span onclick="$('#selected').attr('id','');$(this).attr('id','selected');$('#user-ok').removeAttr('disabled')">{{u}}</span></li>
+        </ul>
+        </div>
+        <div class="modal-footer">
+        <button class="btn btn-primary" ng-click="ok()" id="user-ok" disabled="disabled">OK</button>
+        </div>  
+        </body>
         </script>
     </body>
 </html>
