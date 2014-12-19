@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="ja" ng-app="MyApp" id="my">
+    <head>
+        <meta charset="utf-8">
+        <meta http-equiv="X-UA-Compatible" content="IE=edge">
+        <title></title>
+        <meta name="description" content="">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <link rel="stylesheet" href="http://maxcdn.bootstrapcdn.com/bootstrap/3.2.0/css/bootstrap.min.css">
+        <style>
+            body {
+                padding-top: 30px;
+                padding-bottom: 20px;
+            }
+            .date{
+                width:120px;
+            }
+            td{
+                width:50px;
+                padding-left:30px;
+            }
+            .comment{
+                width:300px;
+            }
+            .app-modal-window .modal-dialog{
+                width:800px;
+            }
+            .shinchaku{
+                color:red;
+            }
+        </style>
+        <link rel="stylesheet" href="css/bootstrap-theme.min.css">
+        <link rel="stylesheet" href="css/main.css">
+        <script src="http://code.jquery.com/jquery-1.11.0.min.js"></script>
+        <script src="https://ajax.googleapis.com/ajax/libs/angularjs/1.2.0/angular.min.js"></script>
+        <script src="http://cdnjs.cloudflare.com/ajax/libs/angular-ui-bootstrap/0.10.0/ui-bootstrap-tpls.min.js"></script>
+        <script src="https://code.jquery.com/jquery-2.1.1.min.js"></script>
+        <script>
+            if (window.localStorage) {
+                var time = Number(window.localStorage.getItem("time"));
+                var long = new Date().getTime();
+                if (!time || long - time > 1000) {
+                    window.localStorage.setItem("time", long);
+                    document.location.reload();
+                }
+            }
+            angular.module("MyApp", ["ui.bootstrap"])
+                    .controller("MyController", ["$window", "$scope", "$modal", "$http", function ($window, $scope, $modal, $http) {
+                            $scope.user = "ゲストさん";
+                            $scope.userlist = ['cuhey3'];
+                            $scope.getUser = function () {
+                                $modal.open({
+                                    templateUrl: 'userModal',
+                                    scope: $scope,
+                                    controller: userModalCtrl,
+                                    windowClass: 'app-modal-window',
+                                    backdrop: 'static'
+                                });
+                            };
+                            $scope.tasks = {};
+                            $http({url: 'http://192.168.1.52:5576/init', method: "GET"})
+                                    .success(function (data) {
+                                        for (var key in data) {
+                                            $scope.tasks[key] = data[key];
+                                        }
+                                        $scope.getUser();
+                                    });
+                            $scope.open = function (r) {
+                                $scope.modal_id = r.task_id;
+                                $scope.modal_obj = $scope.tasks[$scope.modal_id];
+                                $modal.open({
+                                    templateUrl: 'myModal',
+                                    scope: $scope,
+                                    controller: ModalInstanceCtrl,
+                                    windowClass: 'app-modal-window'
+                                });
+                            };
+                            $scope.ws = new WebSocket("ws://192.168.1.52:4645/");
+                            $scope.ws.onopen = function () {
+                                console.log("Socket has been opened!");
+                            };
+                            $scope.ws.onclose = function () {
+                                alert("サーバーとの接続が切断されました。ページを再読み込みしてください。");
+                            };
+                            $scope.ws.onmessage = function (message) {
+                                var task = JSON.parse(message.data);
+                                if (task.operation === "create") {
+                                    $scope.tasks[task.task_id] = task;
+                                } else if (task.operation === "edit") {
+                                    $scope.tasks[task.task_id] = task;
+                                    if ($scope.modal_id === task.task_id) {
+                                        $scope.modal_obj = $scope.tasks[$scope.modal_id];
+                                    }
+                                } else if (task.operation === "delete") {
+                                    delete $scope.tasks[task.task_id];
+                                }
+                                if (task.status && task.status.length !== 0 && last(task.status).author === $scope.user) {
+                                    $scope.kidoku[$scope.user][task.task_id] = last(task.status).time;
+                                    window.localStorage.setItem("kidoku", JSON.stringify($scope.kidoku));
+                                }
+                                $scope.$apply();
+                                console.log(task);
+                            };
+                            $scope.create = function () {
+                                var obj = new Object();
+                                obj["operation"] = "create";
+                                obj["task_name"] = window.prompt("タスク名を入力", "");
+                                obj["author"] = $scope.user;
+                                if (obj["task_name"]) {
+                                    obj["status"] = new Array();
+                                    $scope.ws.send(JSON.stringify(obj));
+                                }
+                            };
+                            $scope.allKidoku = function () {
+                                var tasks = $scope.tasks;
+                                for (var task_id in tasks) {
+                                    if (!tasks[task_id].status) {
+                                        continue;
+                                    }
+                                    for (var i = 0; i < tasks[task_id].status.length; i++) {
+                                        $scope.kidoku[$scope.user][task_id] = tasks[task_id].status[i].time;
+                                    }
+                                }
+                                window.localStorage.setItem("kidoku", JSON.stringify($scope.kidoku));
+                            };
+                        }])
+                    .filter('kidoku1', ['$filter', function ($filter) {
+                            return function (obj, scope) {
+                                var kidoku = scope.kidoku;
+                                var user = scope.user;
+                                var task_id = obj.task_id;
+                                var status = obj.status;
+                                if (!kidoku || !kidoku[user] || !status || status.length === 0) {
+                                    return "";
+                                } else if (kidoku[user][task_id] === undefined || kidoku[user][task_id] < last(status).time) {
+                                    return "shinchaku";
+                                } else {
+                                    return "";
+                                }
+                            };
+                        }])
+                    .filter('kidoku2', ['$filter', function ($filter) {
+                            return function (obj, scope) {
+                                var kidoku = scope.kidoku;
+                                var user = scope.user;
+                                var task_id = scope.modal_id;
+                                if (!kidoku || !kidoku[user]) {
+                                    return "";
+                                } else if (kidoku[user][task_id] === undefined || kidoku[user][task_id] < obj.time) {
+                                    return "shinchaku";
+                                } else {
+                                    return "";
+                                }
+                            };
+                        }])
+                    .filter('completion', ['$filter', function ($filter) {
+                            return function (tasks, scope) {
+                                var filtered = [];
+                                for (var key in tasks) {
+                                    var task = tasks[key];
+                                    var status = task.status;
+                                    var flag = scope.completionFlag;
+                                    if (status && status.length > 0 && last(status).type === "完了") {
+                                        if (flag === "true") {
+                                            filtered.push(task);
+                                        }
+                                    } else if (!flag || flag === "false") {
+                                        filtered.push(task);
+                                    }
+                                }
+                                filtered.sort(function (a, b) {
+                                    if ((!a.status || a.status.length === 0) && (!b.status || b.status.length === 0)) {
+                                        return b.task_id - a.task_id;
+                                    } else if (!a.status || a.status.length === 0) {
+                                        return last(b.status).time - a.task_id;
+                                    } else if (!b.status || b.status.length === 0) {
+                                        return b.task_id - last(a.status).time;
+                                    } else {
+                                        return last(b.status).time - last(a.status).time;
+                                    }
+                                });
+                                return filtered;
+                            };
+                        }])
+                    .filter('last', ['$filter', function ($filter) {
+                            return function (obj, array_name, prop_name1, prop_name2) {
+                                var array = obj[array_name];
+                                if (!array || array.length === 0) {
+                                    if (!obj[prop_name2]) {
+                                        return "";
+                                    } else {
+                                        return obj[prop_name2];
+                                    }
+                                } else {
+                                    return array[array.length - 1][prop_name1];
+                                }
+                            };
+                        }])
+                    .filter('relation', ['$filter', function ($filter) {
+                            return function (tasks, scope) {
+                                var filtered = [];
+                                for (var key in tasks) {
+                                    var task = tasks[key];
+                                    var status = task.status;
+                                    var flag = scope.relationFlag;
+                                    var user = scope.user;
+                                    var hasUser = false;
+                                    if (task.author === user) {
+                                        hasUser = true;
+                                    }
+                                    if (status) {
+                                        for (var i = 0; i < status.length; i++) {
+                                            if(status[i]["author"] === user){
+                                                hasUser = true;
+                                            }
+                                        }
+                                    }
+                                    if (flag === "true") {
+                                        if (!hasUser) {
+                                            filtered.push(task);
+                                        }
+                                    } else if (!flag || flag === "false") {
+                                        if (hasUser) {
+                                            filtered.push(task);
+                                        }
+                                    }
+                                }
+                                filtered.sort(function (a, b) {
+                                    if ((!a.status || a.status.length === 0) && (!b.status || b.status.length === 0)) {
+                                        return b.task_id - a.task_id;
+                                    } else if (!a.status || a.status.length === 0) {
+                                        return last(b.status).time - a.task_id;
+                                    } else if (!b.status || b.status.length === 0) {
+                                        return b.task_id - last(a.status).time;
+                                    } else {
+                                        return last(b.status).time - last(a.status).time;
+                                    }
+                                });
+                                return filtered;
+                            };
+                        }]);
+            var last = function (obj) {
+                return obj[obj.length - 1];
+            };
+            var ModalInstanceCtrl = function ($scope, $modalInstance) {
+                $scope.edit = function (e) {
+                    $('.inputtr').show();
+                    $('.modal-textarea').show(300);
+                    $scope.statusnow = e;
+                };
+                $scope.doKidoku = function () {
+                    $scope.kidoku[$scope.user][$scope.modal_id] = last($scope.modal_obj.status).time;
+                    window.localStorage.setItem("kidoku", JSON.stringify($scope.kidoku));
+                    $modalInstance.dismiss('cancel');
+                };
+                $scope.cancel = function () {
+                    $modalInstance.dismiss('cancel');
+                };
+                $scope.commit = function () {
+                    if ($scope.statusnow) {
+                        if (!$scope.modal_obj.status) {
+                            $scope.modal_obj.status = new Array();
+                        }
+                        var st = new Object();
+                        st.type = $scope.statusnow;
+                        st.time = new Date().getTime() + "";
+                        st.author = $scope.user;
+                        st.comment = $(".inputtr .comment").text();
+                        $scope.modal_obj.status.push(st);
+                        $scope.modal_obj.operation = "edit";
+                        $scope.ws.send(JSON.stringify($scope.modal_obj));
+                        $(".inputtr").hide();
+                    }
+                    $modalInstance.close();
+                };
+                $scope.remove = function () {
+                    if ($scope.user === $scope.modal_obj.author && confirm("このタスクを削除しますか？")) {
+                        var obj = new Object();
+                        obj["operation"] = "delete";
+                        obj["task_id"] = $scope.modal_id;
+                        $scope.ws.send(JSON.stringify(obj));
+                        $modalInstance.close();
+                    } else {
+                        alert("作成者のみがタスクを削除できます。");
+                    }
+                };
+            };
+            var userModalCtrl = function ($scope, $modalInstance) {
+                $scope.ok = function () {
+                    var user = $("#selected").text();
+                    $scope.$parent.user = user;
+                    var kidoku = window.localStorage.getItem("kidoku");
+                    if (kidoku !== undefined && kidoku !== "undefined") {
+                        $scope.$parent.kidoku = JSON.parse(kidoku);
+                    } else {
+                        $scope.$parent.kidoku = {};
+                        indow.localStorage.setItem("kidoku", JSON.stringify($scope.kidoku));
+                    }
+                    try {
+                        var i = $scope.$parent.kidoku[user];
+                    } catch (e) {
+                        $scope.$parent.kidoku = {};
+                    }
+                    if (!$scope.$parent.kidoku[user]) {
+                        $scope.$parent.kidoku[user] = {};
+                        for (var task_id in $scope.$parent.tasks) {
+                            if ($scope.$parent.tasks[task_id].status) {
+                                for (var i = 0; i < $scope.$parent.tasks[task_id].status.length; i++) {
+                                    if (user === $scope.$parent.tasks[task_id].status[i].author) {
+                                        $scope.$parent.kidoku[user][task_id] = $scope.$parent.tasks[task_id].status[i].time;
+                                    }
+                                }
+                            }
+                        }
+                        window.localStorage.setItem("kidoku", JSON.stringify($scope.kidoku));
+                    }
+                    $modalInstance.close();
+                };
+            };</script>
+    </head>
+    <body ng-controller="MyController">
+        <div class="container">
+            <h2>ちょくメモ（ver.α）</h2>
+            <h3>{{user}}</h3>
+            <input type="button" value="タスクを作成" ng-click="create()" />
+            <input type="button" value="全て既読" ng-click="allKidoku()" />
+            　<input type="checkbox" ng-true-value="true" ng-false-value="false" ng-model="completionFlag" /> 完了タスクを表示
+             　<input type="checkbox" ng-true-value="true" ng-false-value="false" ng-model="relationFlag" /> みんなのタスクを表示
+            <table id="searchObjResults" class="table table-hover">
+                <thead>
+                    <tr><th>更新日時</th><th>タスク名</th><th>更新者</th><th>ステータス</th><th>コメント</th><th style="display: none;" class="comment"></th></tr>
+                </thead>
+                <tbody>
+                    <tr ng-repeat="obj in tasks|completion:this|relation:this track by $index" ng-click="open(obj);" class="{{obj|kidoku1:this}}">
+                        <td>{{obj|last:"status":"time":"task_id"| date:'MM/dd HH:mm'}}</td>
+                        <td>{{obj.task_name}}</td>
+                        <td>{{obj|last:"status":"author":"author"}}</td>
+                        <td>{{obj.status[obj.status.length - 1].type}}</td>
+                        <td class="comment">{{obj.status[obj.status.length - 1].comment}}</td>
+                        <td ng-model="style" style="display: none;"></td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        <script src="http://maxcdn.bootstrapcdn.com/bootstrap/3.2.0/js/bootstrap.min.js"></script>
+        <script  type="text/ng-template" id="myModal">
+            <style>
+            .modal-textarea{display:none;height:4em;}
+            .inputtr{display:none;}
+            </style>
+            <div class="modal-header">
+            <h3 class="modal-title">{{modal_obj.task_name}}</h3>
+            </div>
+            <div class="modal-body">
+            <table class="table">
+            <thead><tr><th>進捗</th><th>日時</th><th>対応者</th><th>コメント</th></tr></thead>
+            <tbody>
+            <tr ng-repeat="st in modal_obj.status track by $index" class="{{st|kidoku2:this}}">
+            <td>{{st.type}}</td>
+            <td>{{st.time| date:'MM/dd HH:mm'}}</td>
+            <td>{{st.author}}</td>
+            <td class="comment">{{st.comment}}</td>
+            </tr>
+            <tr class="inputtr">
+            <td>{{statusnow}}</td>
+            <td>現在時刻</td>
+            <td>{{user}}</td>
+            <td class="comment">{{inputnow}}</td>
+            </tr>
+            </tbody>
+            </table>
+            <textarea style="width:100%;padding:10px;" class="modal-textarea" ng-model="inputnow"></textarea>
+            <div class="modal-footer">
+            <div style="float:left;">
+            <button class="btn btn-warning" ng-click="edit('追記')">追記</button>
+            <button class="btn btn-success" ng-click="edit('完了')">完了</button>
+            </div>
+            <div style="float:right;">
+            <button class="btn btn-primary" ng-click="commit()">送信</button>
+            <button class="btn btn-primary" ng-click="remove()">削除</button>
+            <button class="btn btn-default" ng-click="doKidoku()">既読</button>
+            <button class="btn btn-default" ng-click="cancel()">閉じる</button>
+            </div>
+            </div>
+            </div>
+            </body>
+        </script>
+        <script  type="text/ng-template" id="userModal">
+            <style>
+            #selected{background-color:yellow;}
+            </style>
+            <body>
+            <div class="modal-header">
+            <h3 class="modal-title">ユーザーを選択してください</h3>
+            </div>
+            <div class="modal-body">
+            <ul ng-repeat="u in userlist track by $index">
+            <li><span onclick="$('#selected').attr('id','');$(this).attr('id','selected');$('#user-ok').removeAttr('disabled')">{{u}}</span></li>
+            </ul>
+            </div>
+            <div class="modal-footer">
+            <button class="btn btn-primary" ng-click="ok()" id="user-ok" disabled="disabled">OK</button>
+            </div>  
+            </body>
+        </script>
+    </body>
+</html>
