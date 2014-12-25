@@ -8,29 +8,13 @@
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <link rel="stylesheet" href="http://maxcdn.bootstrapcdn.com/bootstrap/3.2.0/css/bootstrap.min.css">
         <style>
-            body {
-                padding-top: 30px;
-                padding-bottom: 20px;
-            }
-            .date{
-                width:120px;
-            }
-            td{
-                width:50px;
-                padding-left:30px;
-            }
-            .comment{
-                width:300px;
-            }
-            .app-modal-window .modal-dialog{
-                width:800px;
-            }
-            .shinchaku{
-                color:red;
-            }
+            body {padding-top: 30px;padding-bottom: 20px;}
+            .date{width:120px;}
+            td{width:50px;padding-left:30px;}
+            .comment{width:300px;}
+            .app-modal-window .modal-dialog{width:800px;}
+            .shinchaku{color:red;}
         </style>
-        <link rel="stylesheet" href="css/bootstrap-theme.min.css">
-        <link rel="stylesheet" href="css/main.css">
         <script src="http://code.jquery.com/jquery-1.11.0.min.js"></script>
         <script src="https://ajax.googleapis.com/ajax/libs/angularjs/1.2.0/angular.min.js"></script>
         <script src="http://cdnjs.cloudflare.com/ajax/libs/angular-ui-bootstrap/0.10.0/ui-bootstrap-tpls.min.js"></script>
@@ -43,76 +27,74 @@
                     window.localStorage.setItem("time", long);
                     document.location.reload();
                 }
+            } else {
+                alert("ブラウザのアップデートが必要です。");
             }
             angular.module("MyApp", ["ui.bootstrap"])
-                    .controller("MyController", ["$window", "$scope", "$modal", "$http", function ($window, $scope, $modal, $http) {
+                    .controller("MyController", ["$scope", "$modal", "$http", function ($scope, $modal, $http) {
                             $scope.user = "ゲストさん";
                             $scope.userlist = ['cuhey3'];
+                            $scope.tasks = {};
                             $scope.getUser = function (flag) {
                                 if (flag) {
                                     $modal.open({
-                                        templateUrl: 'userModal',
-                                        scope: $scope,
-                                        controller: userModalCtrl,
-                                        windowClass: 'app-modal-window',
+                                        templateUrl: 'userModal', controller: userModalCtrl,
+                                        scope: $scope, windowClass: 'app-modal-window'
                                     });
                                 } else {
                                     if (window.localStorage.getItem("user")) {
                                         $scope.user = window.localStorage.getItem("user");
+                                        $scope.kidoku = JSON.parse(window.localStorage.getItem("kidoku"));
                                     } else {
                                         $modal.open({
-                                            templateUrl: 'userModal',
-                                            scope: $scope,
-                                            controller: userModalCtrl,
-                                            windowClass: 'app-modal-window',
+                                            templateUrl: 'userModal', controller: userModalCtrl,
+                                            scope: $scope, windowClass: 'app-modal-window',
                                             backdrop: 'static'
                                         });
                                     }
                                 }
                             };
-                            $scope.tasks = {};
-                            $http({url: 'http://192.168.1.52:5576/init', method: "GET"})
+                            $http({url: 'http://localhost:5576/init', method: "GET"})
                                     .success(function (data) {
                                         for (var key in data) {
                                             $scope.tasks[key] = data[key];
                                         }
                                         $scope.getUser(false);
+                                        $scope.ws = new WebSocket("ws://localhost:4645/");
+                                        $scope.ws.onopen = function () {
+                                            console.log("Socket has been opened!");
+                                        };
+                                        $scope.ws.onclose = function () {
+                                            alert("サーバーとの接続が切断されました。ページを再読み込みしてください。");
+                                        };
+                                        $scope.ws.onmessage = function (message) {
+                                            var task = JSON.parse(message.data);
+                                            if (task.operation === "create") {
+                                                $scope.tasks[task.task_id] = task;
+                                            } else if (task.operation === "edit") {
+                                                $scope.tasks[task.task_id] = task;
+                                                if ($scope.modal_id === task.task_id) {
+                                                    $scope.modal_obj = $scope.tasks[$scope.modal_id];
+                                                }
+                                            } else if (task.operation === "delete") {
+                                                delete $scope.tasks[task.task_id];
+                                            }
+                                            if (task.status && task.status.length !== 0 && last(task.status).author === $scope.user) {
+                                                $scope.kidoku[$scope.user][task.task_id] = last(task.status).time;
+                                                window.localStorage.setItem("kidoku", JSON.stringify($scope.kidoku));
+                                            }
+                                            $scope.$apply();
+                                            console.log(task);
+                                        };
                                     });
-                            $scope.open = function (r) {
+
+                            $scope.taskOpen = function (r) {
                                 $scope.modal_id = r.task_id;
                                 $scope.modal_obj = $scope.tasks[$scope.modal_id];
                                 $modal.open({
-                                    templateUrl: 'myModal',
-                                    scope: $scope,
-                                    controller: ModalInstanceCtrl,
-                                    windowClass: 'app-modal-window'
+                                    templateUrl: 'myModal', controller: ModalInstanceCtrl,
+                                    modal: $modal, scope: $scope, windowClass: 'app-modal-window'
                                 });
-                            };
-                            $scope.ws = new WebSocket("ws://192.168.1.52:4645/");
-                            $scope.ws.onopen = function () {
-                                console.log("Socket has been opened!");
-                            };
-                            $scope.ws.onclose = function () {
-                                alert("サーバーとの接続が切断されました。ページを再読み込みしてください。");
-                            };
-                            $scope.ws.onmessage = function (message) {
-                                var task = JSON.parse(message.data);
-                                if (task.operation === "create") {
-                                    $scope.tasks[task.task_id] = task;
-                                } else if (task.operation === "edit") {
-                                    $scope.tasks[task.task_id] = task;
-                                    if ($scope.modal_id === task.task_id) {
-                                        $scope.modal_obj = $scope.tasks[$scope.modal_id];
-                                    }
-                                } else if (task.operation === "delete") {
-                                    delete $scope.tasks[task.task_id];
-                                }
-                                if (task.status && task.status.length !== 0 && last(task.status).author === $scope.user) {
-                                    $scope.kidoku[$scope.user][task.task_id] = last(task.status).time;
-                                    window.localStorage.setItem("kidoku", JSON.stringify($scope.kidoku));
-                                }
-                                $scope.$apply();
-                                console.log(task);
                             };
                             $scope.create = function () {
                                 var obj = new Object();
@@ -127,7 +109,7 @@
                             $scope.allKidoku = function () {
                                 var tasks = $scope.tasks;
                                 for (var task_id in tasks) {
-                                    if (!tasks[task_id].status) {
+                                    if (!tasks[task_id].status || tasks[task_id].status.length === 0) {
                                         continue;
                                     }
                                     for (var i = 0; i < tasks[task_id].status.length; i++) {
@@ -255,7 +237,7 @@
             var last = function (obj) {
                 return obj[obj.length - 1];
             };
-            var ModalInstanceCtrl = function ($scope, $modalInstance) {
+            var ModalInstanceCtrl = function ($modal, $scope, $modalInstance) {
                 $scope.edit = function (e) {
                     $('.inputtr').show();
                     $('.modal-textarea').show(300);
@@ -286,16 +268,12 @@
                     }
                     $modalInstance.close();
                 };
-                $scope.remove = function () {
-                    if ($scope.user === $scope.modal_obj.author && confirm("このタスクを削除しますか？")) {
-                        var obj = new Object();
-                        obj["operation"] = "delete";
-                        obj["task_id"] = $scope.modal_id;
-                        $scope.ws.send(JSON.stringify(obj));
-                        $modalInstance.close();
-                    } else {
-                        alert("作成者のみがタスクを削除できます。");
-                    }
+                $scope.taskSetting = function (obj) {
+                    $scope.parentModal = $modalInstance;
+                    $modal.open({
+                        templateUrl: 'taskSettingModal', controller: taskSettingCtrl,
+                        scope: $scope, windowClass: 'app-modal-window'
+                    });
                 };
             };
             var userModalCtrl = function ($scope, $modalInstance) {
@@ -330,6 +308,31 @@
                     window.localStorage.setItem("user", user);
                     $modalInstance.close();
                 };
+            };
+            var taskSettingCtrl = function ($scope, $modalInstance) {
+                $scope.ok = function () {
+                    $scope.modal_obj.operation = "edit";
+                    $scope.modal_obj.task_name = $("#new_task_name").val();
+                    $scope.ws.send(JSON.stringify($scope.modal_obj));
+                    $modalInstance.close();
+                };
+                $scope.cancel = function () {
+                    $modalInstance.close();
+                };
+                $scope.remove = function () {
+                    if ($scope.user === $scope.modal_obj.author) {
+                        if (confirm("このタスクを削除しますか？")) {
+                            var obj = new Object();
+                            obj["operation"] = "delete";
+                            obj["task_id"] = $scope.modal_id;
+                            $scope.ws.send(JSON.stringify(obj));
+                            $scope.parentModal.close();
+                            $modalInstance.close();
+                        }
+                    } else {
+                        alert("作成者のみがタスクを削除できます。");
+                    }
+                };
             };</script>
     </head>
     <body ng-controller="MyController">
@@ -337,8 +340,8 @@
             <h2>ちょくメモ（ver.α）</h2>
             <h3>{{user}}</h3>
             <div>
-                <input type="button" value="タスクを作成" ng-click="create()" />
-                <input type="button" value="全て既読" ng-click="allKidoku()" />
+                <input type="button" value="タスクを作成" ng-click="create();" />
+                <input type="button" value="全て既読" ng-click="allKidoku();" />
             　<input type="checkbox" ng-true-value="true" ng-false-value="false" ng-model="completionFlag" /> 完了タスクを表示
              　<input type="checkbox" ng-true-value="true" ng-false-value="false" ng-model="relationFlag" /> みんなのタスクを表示
                 <div style="float:right">
@@ -350,7 +353,7 @@
                     <tr><th>更新日時</th><th>タスク名</th><th>更新者</th><th>ステータス</th><th>コメント</th><th style="display: none;" class="comment"></th></tr>
                 </thead>
                 <tbody>
-                    <tr ng-repeat="obj in tasks|completion:this|relation:this track by $index" ng-click="open(obj);" class="{{obj|kidoku1:this}}">
+                    <tr ng-repeat="obj in tasks|completion:this|relation:this track by $index" ng-click="taskOpen(obj);" class="{{obj|kidoku1:this}}">
                         <td>{{obj|last:"status":"time":"task_id"| date:'MM/dd HH:mm'}}</td>
                         <td>{{obj.task_name}}</td>
                         <td>{{obj|last:"status":"author":"author"}}</td>
@@ -367,8 +370,9 @@
             .modal-textarea{display:none;height:4em;}
             .inputtr{display:none;}
             </style>
-            <div class="modal-header">
-            <h3 class="modal-title">{{modal_obj.task_name}}</h3>
+            <div class="modal-header" style="overflow:hidden;">
+            <h3 class="modal-title"><div style="float:left;">{{modal_obj.task_name}}</div></h3>
+            <div style="padding-top:5px;float:right;"><input type="button" value="設定" ng-click="taskSetting(modal_obj);"></input></div>
             </div>
             <div class="modal-body">
             <table class="table">
@@ -396,8 +400,7 @@
             </div>
             <div style="float:right;">
             <button class="btn btn-primary" ng-click="commit()">送信</button>
-            <button class="btn btn-primary" ng-click="remove()">削除</button>
-            <button class="btn btn-default" ng-click="doKidoku()">既読</button>
+            <button class="btn btn-info" ng-click="doKidoku()">既読</button>
             <button class="btn btn-default" ng-click="cancel()">閉じる</button>
             </div>
             </div>
@@ -405,22 +408,38 @@
             </body>
         </script>
         <script  type="text/ng-template" id="userModal">
-        <style>
-        #selected{background-color:yellow;}
-        </style>
-        <body>
-        <div class="modal-header">
-        <h3 class="modal-title">ユーザーを選択してください</h3>
-        </div>
-        <div class="modal-body">
-        <ul ng-repeat="u in userlist track by $index">
-        <li><span onclick="$('#selected').attr('id','');$(this).attr('id','selected');$('#user-ok').removeAttr('disabled')">{{u}}</span></li>
-        </ul>
-        </div>
-        <div class="modal-footer">
-        <button class="btn btn-primary" ng-click="ok()" id="user-ok" disabled="disabled">OK</button>
-        </div>  
-        </body>
+            <style>
+            #selected{background-color:yellow;}
+            </style>
+            <body>
+            <div class="modal-header">
+            <h3 class="modal-title">ユーザーを選択してください</h3>
+            </div>
+            <div class="modal-body">
+            <ul ng-repeat="u in userlist track by $index">
+            <li><span onclick="$('#selected').attr('id','');$(this).attr('id','selected');$('#user-ok').removeAttr('disabled')">{{u}}</span></li>
+            </ul>
+            </div>
+            <div class="modal-footer">
+            <button class="btn btn-primary" ng-click="ok()" id="user-ok" disabled="disabled">OK</button>
+            </div>  
+            </body>
+        </script>
+        <script  type="text/ng-template" id="taskSettingModal">
+            <body>
+            <div class="modal-header">
+            <h3 class="modal-title">タスクの編集</h3>
+            </div>
+            <div class="modal-body">
+            <h3>タスク名： <input type="text" value="{{modal_obj.task_name}}" style="width:100%;" id="new_task_name"></input></h3>
+            </div>
+            <div class="modal-footer">
+            <button class="btn btn-primary" ng-click="ok()">設定を保存</button>
+            <button class="btn btn-danger" ng-click="remove()">削除</button>
+            <button class="btn btn-default" ng-click="cancel()">何もしない</button>
+            </div>  
+            </body>
+            </body>
         </script>
     </body>
 </html>
